@@ -1,0 +1,196 @@
+---
+title: "ANALYZING HISTORICAL NYPD SHOOTING DATA "
+author: "Anonymous"
+date: "23/05/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## IMPORTING THE DATA
+
+We are looking to analyse every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. Using the following source.
+```{r get_data,results=FALSE}
+#import data
+nypd <- read.csv("NYPD_Shooting_Incident_Data__Historic_.csv")
+head(nypd)
+```
+
+Initially from a quick analysis of the data, we can use this data to look at the approximate likelihood of crime in a borough in NYC. 
+
+
+#Looking at some of the data: 
+We are looking at a data.frame with	23568 observations of  19 variables:
+```{r explore_data,results=FALSE}
+summary(nypd)
+head(nypd)
+class(nypd)
+names(nypd)
+str(nypd)
+```
+```{r stat_data}
+library(Hmisc)
+describe(nypd$OCCUR_DATE)
+describe(nypd$VIC_SEX)
+describe(nypd$PERP_SEX)
+```
+
+Changing up the format of Occurrence date so we can use it for analysis:
+```{r changed_date_format}
+library(dplyr)
+library(magrittr)
+
+nypd$DATE <- as.Date(nypd$OCCUR_DATE,
+                        format = "%m/%d/%y")
+head(nypd)
+  
+```
+#changing logical boolean into integer for STATISTICAL_MURDER_FLAG TO INDICATE WHETHER THE SHOOTING WAS FATAL OR NOT
+```{r murder_not_variable}
+library(dplyr)
+library(ggplot2)
+#changing logical boolean into integer
+murder=nypd$STATISTICAL_MURDER_FLAG[nypd$STATISTICAL_MURDER_FLAG=="TRUE"]<-1#indicates fatality
+shooting=nypd$STATISTICAL_MURDER_FLAG[nypd$STATISTICAL_MURDER_FLAG=="FALSE"]<-0#indicates non-fatality
+
+
+```
+
+There are some values noted in PERP_RACE and VIC_RACE as "UNKNOWN"  which are missing so we want to remove those values from the dataset.
+```{r missing_data, echo=TRUE,results=FALSE }
+nypd$VIC_RACE[nypd$VIC_RACE == "UNKNOWN"] <- NA
+nypd$PERP_RACE[nypd$PERP_RACE == "UNKNOWN"] <- NA
+nypd$VIC_AGE_GROUP[nypd$VIC_AGE_GROUP == "UNKNOWN"] <- NA
+nypd$PERP_AGE_GROUP[nypd$PERP_AGE_GROUP == "UNKNOWN"] <- NA
+na.omit(nypd)
+```
+
+Now the data looks more complete.
+```{r show_data, results=FALSE}
+print(nypd)
+```
+Now lets make some categoricals usable for the analysis:
+```{r cat_variables}
+nypd$BORO=factor(nypd$BORO,levels=c("MANHATTAN","BROOKLYN","QUEENS","BRONX","STATEN ISLAND"))
+nypd$PERP_RACE= factor(nypd$PERP_RACE,levels=c("BLACK","ASIAN/PACIFIC ISLANDER","WHITE", "WHITE HISPANIC"))
+nypd$VIC_RACE=factor(nypd$VIC_RACE,levels=c("BLACK","ASIAN/PACIFIC ISLANDER","WHITE", "WHITE HISPANIC"))
+nypd$PERP_AGE_GROUP=factor(nypd$PERP_AGE_GROUP,levels=c("<18", "18-24", "25-44","45-64","65+"))
+nypd$VIC_AGE_GROUP=factor(nypd$VIC_AGE_GROUP,levels=c("<18", "18-24", "25-44","45-64","65+"))
+
+head(nypd)
+
+```
+
+
+##Tidying and Transforming Data
+Now lets make remove some irrelvant columns for the analysis:
+```{r remove_columns,results=FALSE}
+nypd$JURISDICTION_CODE<- NULL
+nypd$count.2<- NULL
+nypd$count<- NULL
+print(nypd)
+```
+
+
+##Visualizing the data and modelling the data
+
+Looking at some of the data after being cleaned, we can come up with some visualizations as follows:
+
+```{r plot_var,echo=FALSE}
+par(mfrow=c(2,2))
+plot(nypd$PERP_AGE_GROUP,xlab="AGE GROUP", ylab="COUNT",main="Shooting incidents by suspect age group")
+plot(nypd$VIC_AGE_GROUP,xlab="AGE GROUP", ylab="COUNT",main="Shooting incidents by victim age group")
+plot(nypd$VIC_RACE,xlab="RACE", ylab="COUNT",main="Shooting incidents by suspect race")
+plot(nypd$PERP_RACE,xlab="RACE", ylab="COUNT",main="Shooting incidents by victim race")
+```
+
+```{r visualize_data, echo=FALSE}
+par(mfrow=c(2,2))
+boxplot(nypd$DATE~nypd$BORO, main="Number of Shooting Incidents By Borough")
+boxplot(nypd$DATE~nypd$VIC_RACE, main="Analysis of Race of Victims in Shootings")
+boxplot(nypd$DATE~nypd$PERP_RACE, main="Analysis of Race of Suspects in Shootings")
+
+```
+
+##MODEL ANALYSIS
+
+Now that we have a clear sense of the data. We can complete some analysis to determine how this data can be applied in real world applications. 
+We can determine if the trend of shooting data has increased or decreased over time. 
+
+```{r model_analysis}
+library(dbplyr)
+library(lubridate)
+library(tidyverse)
+df <- nypd %>% rename(incident_type = STATISTICAL_MURDER_FLAG) %>% mutate(year=substr(OCCUR_DATE,7,10)) %>% 
+  select(year, incident_type) %>%
+  mutate(incident_type= ifelse(incident_type ==FALSE,"Non-Lethal","Lethal")) 
+
+ggplot(df, aes(x = year, fill = incident_type)) + 
+  geom_bar(position = position_dodge(preserve="single")) + 
+  labs(title="Lethal Incidents Over time in NYC", fill ="Incident Type")
+```
+In terms of real world applications, lets think of the real estate industry or tourism industry. If you were looking to own property in NYC and were researching the safety of each borough, the following data would be useful to analyse. 
+
+```{r model2_analysis}
+library(dbplyr)
+library(lubridate)
+library(tidyverse)
+BORO=nypd$BORO=factor(nypd$BORO,levels=c("MANHATTAN","BROOKLYN","QUEENS","BRONX","STATEN ISLAND"))
+df1 <- nypd %>% rename(incident_type= STATISTICAL_MURDER_FLAG) %>% 
+  mutate(location=BORO) %>% 
+  select(location, incident_type) %>%
+  mutate(incident_type= ifelse(incident_type == FALSE,"Non-Lethal","Lethal")) 
+
+ggplot(df1, aes(x = location, fill = incident_type)) + 
+  geom_bar(position = position_dodge(preserve="single")) + 
+  labs(title="Lethal Incidents By Location", fill ="Incident Type")
+```
+From this analysis, we can see that Queens and Staten Island has a lesser likelihood of gun violence. Therefore we can use this data to determine the best place to own property or plan a  visit for sightseeing.  
+
+```{r table_summary, echo=TRUE, RESULTS= FALSE}
+summary(df1)
+describe(df1)
+
+percentage_fatality_Brooklyn=(2921/23568)*100
+print(percentage_fatality_Brooklyn)
+
+percentage_fatality_Brooklyn=(9722/23568)*100
+print(percentage_fatality_Brooklyn)
+
+percentage_fatality_QUEENS=(3527/23568)*100
+print(percentage_fatality_QUEENS)
+
+percentage_fatality_BRONX=(6700/23568)*100
+print(percentage_fatality_BRONX)
+
+percentage_fatality_STATEN_ISLAND = (698/23568)*100
+print(percentage_fatality_STATEN_ISLAND)
+```
+
+BOROUGH                |   FREQUENCY          | PERCENTAGE
+:----------------------|:--------------------:|:-------------|
+MANHATTAN              | 2921                 | 12.4%
+BROOKYLN               | 9722                 | 41.2%        |            
+QUEENS                 | 3527                 | 14.96%       |
+BRONX                  | 6700                 | 28.43%       |
+STATEN ISLAND          | 698                  | 2.96%        |
+
+##Bias Identification
+
+The data included in the "HISTORICAL NYPD SHOOTING INCIDENTS" categorizes many factors including age, range, location etc.
+In real world analysis, it may create some biases when studying the data. Mainly, certain biases may arise when we ask how was the data extracted, what other information may have been left out. Were there environmental factors, how many fatalities were there? Was the victim unarmed? Does each Boro or Jursidiction have a history of shooting activity? These questions make incident based data is hard to analyze as we don't have information about each situation. There could be  misreporting which leads to biased incident data collection. For example, many of the columns contain NA or "UNKNOWN" values so we dont have the complete data to work with. 
+
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+
